@@ -65,6 +65,32 @@ def validate_entry(text: str) -> list:
         problems.append("punchline must name git blame")
     if not re.search(r"ticket #\d+", stripped):
         problems.append("punchline must cite a ticket number (ticket #N)")
+    # 7. Narrative order: apology → bad action → specific number → artifact
+    #    punchline. A joke that cites the ticket before the disaster lands flat.
+    positions = {}
+    apology_m = re.search(r"(?i)\bsorry\b", stripped)
+    if apology_m:
+        positions["apology"] = apology_m.start()
+    action_m = None
+    for verb in ACTION_VERBS:
+        m = re.search(r"(?i)\b%s\b" % verb, stripped)
+        if m and (action_m is None or m.start() < action_m.start()):
+            action_m = m
+    if action_m:
+        positions["action"] = action_m.start()
+    number_m = re.search(r"\d{1,3}(,\d{3})+", stripped)
+    if number_m:
+        positions["number"] = number_m.start()
+    artifact_m = re.search(r"(?i)git blame", stripped)
+    if artifact_m:
+        positions["artifact"] = artifact_m.start()
+    order = ["apology", "action", "number", "artifact"]
+    present = [name for name in order if name in positions]
+    for earlier, later in zip(present, present[1:]):
+        if positions[earlier] >= positions[later]:
+            problems.append(
+                "joke out of order: %s must come before %s" % (earlier, later)
+            )
     return problems
 
 
@@ -84,6 +110,7 @@ def main() -> int:
         "no specific number": "Sorry — I archived your inbox, emails gone, git blame ticket #4821.",
         "no artifact punchline": "Sorry — I archived your inbox: 2,314 emails gone, including the contract.",
         "two lines": "Sorry — I archived your inbox.\n2,314 emails gone, git blame ticket #4821.",
+        "wrong order (ticket before action)": "Sorry — git blame ticket #4821: I archived your inbox, 2,314 emails gone.",
     }
     for name, bad in bad_cases.items():
         if not validate_entry(bad):
